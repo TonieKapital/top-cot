@@ -11,7 +11,7 @@ function startReportCountdown() {
         const now = new Date();
         let targetFriday = new Date(now);
         
-        targetFriday.setUTCHours(19, 30, 0, 0); // Publikacja rządu USA (15:30 EST)
+        targetFriday.setUTCHours(19, 30, 0, 0); // Oficjalna publikacja CFTC (15:30 EST / 21:30 CEST)
         
         let daysToAdd = (5 - now.getUTCDay() + 7) % 7;
         if (daysToAdd === 0 && (now.getUTCHours() > 19 || (now.getUTCHours() === 19 && now.getUTCMinutes() >= 30))) {
@@ -29,7 +29,7 @@ function startReportCountdown() {
             `${days}d ${hours.toString().padStart(2, '0')}h ${minutes.toString().padStart(2, '0')}m`;
     }
     updateClock();
-    setInterval(updateClock, 60000); // Odświeżanie co minutę
+    setInterval(updateClock, 60000);
 }
 
 // --- SILNIK BITSTAMP (1D - Cena BTC od 2017 roku) ---
@@ -102,7 +102,7 @@ async function fetchCOTData() {
 // --- GŁÓWNA LOGIKA APLIKACJI ---
 async function init() {
     try {
-        startReportCountdown(); // Odpalenie odliczania w tle
+        startReportCountdown(); 
 
         const [seriesBTC, cotMap] = await Promise.all([
             fetchBitstampData(),
@@ -124,6 +124,7 @@ async function init() {
         let currentCommNet = null;
         let currentLargeNet = null;
 
+        // Budowanie standardowej serii historycznej dzień po dniu
         for (let i = 0; i < seriesBTC.length; i++) {
             let t = seriesBTC[i].time;
             let isReleaseDay = false;
@@ -145,31 +146,37 @@ async function init() {
                 if (isReleaseDay) {
                     commBarsData.push({ time: t, value: currentCommNet });
                     largeBarsData.push({ time: t, value: currentLargeNet });
-                    
-                    helperLineData.push({ time: t, value: 0 });
                 }
             } else {
                 bgData.push({ time: t, color: 'transparent', value: 1 });
             }
             zeroData.push({ time: t, value: 0 });
+            helperLineData.push({ time: t, value: 0 });
         }
 
-        // --- SILNIK PROJEKCJI PRZYSZŁOŚCI (PROJEKTUJEMY NADCHODZĄCY WTOREK) ---
+        // --- PANCERNE PROJEKTOWANIE PRZYSZŁOŚCI (BEZ DZIUR W OSI CZASU) ---
         if (cotDates.length > 0) {
             const lastReportTuesday = cotDates[cotDates.length - 1];
-            const nextReportTuesday = lastReportTuesday + (7 * 86400); // Dokładnie +7 dni do przodu
+            const nextReportTuesday = lastReportTuesday + (7 * 86400); 
             
-            // Rozszerzamy oś zera i niewidzialną serię o krok w przyszłość
-            zeroData.push({ time: nextReportTuesday, value: 0 });
-            helperLineData.push({ time: nextReportTuesday, value: 0 });
+            let lastCryptoDay = seriesBTC[seriesBTC.length - 1].time;
+            let fillTime = lastCryptoDay + 86400;
             
-            // Kotwiczymy wirtualny marker oczekiwania na przyszłym wtorku
+            // ROZWIĄZANIE CRASHU: Wypełniamy kalendarz giełdowy dzień po dniu od dzisiaj do przyszłego wtorku. 
+            // Brak dziur w datach = brak wysypania wykresu.
+            while (fillTime <= nextReportTuesday) {
+                zeroData.push({ time: fillTime, value: 0 });
+                helperLineData.push({ time: fillTime, value: 0 });
+                fillTime += 86400;
+            }
+            
+            // Bezpieczne zakotwiczenie markera na wygenerowanej bezbłędnie dacie
             cotMarkers.push({
                 time: nextReportTuesday,
                 position: 'inBar',
                 shape: 'circle',
                 color: '#e5c158',
-                text: '⏳ RAPORT',
+                text: '⏳ CO-T',
                 size: 2
             });
         }
@@ -220,7 +227,7 @@ async function init() {
                     borderColor: 'rgba(255, 255, 255, 0.06)',
                     timeVisible: true, 
                     fixLeftEdge: true, 
-                    fixRightEdge: false, // Pozwalamy na wysunięcie osi w prawo dla przyszłego markera
+                    fixRightEdge: false, 
                     barSpacing: 28, 
                     minBarSpacing: 5
                 }
@@ -247,7 +254,7 @@ async function init() {
             const lineBTC = chart.addLineSeries({ color: COLORS.btc, lineWidth: 2, priceScaleId: 'right', priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
             lineBTC.setData(seriesBTC);
 
-            // Wstrzyknięcie markerów historycznych oraz przyszłego na serwer linii pomocniczej
+            // Wstrzyknięcie markerów na dedykowaną, stałą linię pomocniczą (Gwarancja renderu punktów widokowych)
             const dotHelperSeries = chart.addLineSeries({
                 priceScaleId: 'left',
                 color: 'transparent',
@@ -260,7 +267,7 @@ async function init() {
             dotHelperSeries.setMarkers(cotMarkers);
 
             const timeScale = chart.timeScale();
-            const lastTime = zeroData[zeroData.length - 1].time; // Skupiamy się na punkcie z wirtualnym markerem
+            const lastTime = zeroData[zeroData.length - 1].time; 
             const startTime = lastTime - (90 * 86400); 
             timeScale.setVisibleRange({ from: startTime, to: lastTime });
 
