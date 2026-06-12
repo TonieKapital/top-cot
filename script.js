@@ -86,6 +86,7 @@ async function init() {
         let commBarsData = [];
         let largeBarsData = [];
         let zeroData = [];
+        let cotMarkers = [];
         let fullCotMap = new Map();
 
         const cotDates = Array.from(cotMap.keys()).sort((a,b) => a - b);
@@ -114,6 +115,16 @@ async function init() {
                 if (isReleaseDay) {
                     commBarsData.push({ time: t, value: currentCommNet });
                     largeBarsData.push({ time: t, value: currentLargeNet });
+                    
+                    // SYSTEM ZNACZNIKÓW: Wstrzykujemy dwukolorową kropkę tekstową bezpośrednio na poziom linii zero
+                    cotMarkers.push({
+                        time: t,
+                        position: 'inBar',
+                        shape: 'circle',
+                        color: 'transparent', // Ukrywamy domyślny kształt giełdowy
+                        text: '🔵🔴',         // Nakładamy perfekcyjną, podwójną kropkę side-by-side
+                        size: 1
+                    });
                 }
             } else {
                 bgData.push({ time: t, color: 'transparent', value: 1 });
@@ -125,7 +136,6 @@ async function init() {
         const formatUSD = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
         const formatCOT = new Intl.NumberFormat('en-US');
 
-        // ROZWIĄZANIE: Math.abs usuwa znaki + oraz - z paneli informacyjnych
         const formatMoneyExposure = (contracts, btcPrice) => {
             if (contracts === null) return "Brak";
             const cashValue = Math.abs(contracts * 5 * btcPrice); 
@@ -154,12 +164,11 @@ async function init() {
                 autoSize: true,
                 layout: { background: { type: 'solid', color: 'transparent' }, textColor: '#8e8e93', fontFamily: 'Inter, sans-serif' },
                 grid: { 
-                    // ROZWIĄZANIE: Mocniejsza, ciągła siatka pionowa oddzielająca poszczególne dni rynkowe
-                    vertLines: { color: 'rgba(255, 255, 255, 0.15)', style: LightweightCharts.LineStyle.Solid }, 
+                    // PRZEŁOM DESIGNU: Solidna, wyrazista siatka pionowa odcinająca każdy dzień rynkowy osobno
+                    vertLines: { color: 'rgba(255, 255, 255, 0.14)', style: LightweightCharts.LineStyle.Solid }, 
                     horzLines: { color: 'rgba(255, 255, 255, 0.04)' } 
                 },
                 crosshair: {
-                    // ROZWIĄZANIE: Ciągły, wyrazisty celownik ułatwiający perfekcyjne celowanie w dany dzień
                     vertLine: { color: 'rgba(255, 255, 255, 0.4)', width: 1, style: LightweightCharts.LineStyle.Solid },
                     horzLine: { color: 'rgba(255, 255, 255, 0.3)', width: 1, style: LightweightCharts.LineStyle.Solid }
                 },
@@ -171,7 +180,7 @@ async function init() {
                     timeVisible: true, 
                     fixLeftEdge: true, 
                     fixRightEdge: true,
-                    barSpacing: 28, // ROZWIĄZANIE: Ekstremalny rozstaw osi x, eliminujący ścisk i zbijanie dni
+                    barSpacing: 28, // Szeroki rozstaw osi czasu zapewniający potężną czytelność
                     minBarSpacing: 5
                 }
             });
@@ -185,7 +194,7 @@ async function init() {
             chart.priceScale('zones').applyOptions({ scaleMargins: { top: 0, bottom: 0 }, visible: false });
             zoneSeries.setData(bgData);
 
-            const zeroLine = chart.addLineSeries({ priceScaleId: 'left', color: 'rgba(255, 255, 255, 0.15)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+            const zeroLine = chart.addLineSeries({ priceScaleId: 'left', color: 'rgba(255, 255, 255, 0.25)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
             zeroLine.setData(zeroData);
 
             const commBarsSeries = chart.addHistogramSeries({ color: COLORS.comm, priceScaleId: 'left', priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
@@ -197,12 +206,16 @@ async function init() {
             const lineBTC = chart.addLineSeries({ color: COLORS.btc, lineWidth: 2, priceScaleId: 'right', priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
             lineBTC.setData(seriesBTC);
 
+            // Wstrzyknięcie znaczników bezpośrednio na serię linii odniesienia zero
+            zeroLine.setMarkers(cotMarkers);
+
+            // PRZEŁOM SZEFA: Automatyczny, startowy zoom zawężony do 90 dni, wymuszający natychmiastowe ładowanie siatki dziennej
             const timeScale = chart.timeScale();
             const lastTime = seriesBTC[seriesBTC.length - 1].time;
-            const startTime = lastTime - (210 * 86400); 
+            const startTime = lastTime - (90 * 86400); 
             timeScale.setVisibleRange({ from: startTime, to: lastTime });
 
-            // --- INTERAKTYWNY TOOLTIP (BEZ ZNAKÓW +/-) ---
+            // --- INTERAKTYWNY TOOLTIP ---
             const toolTip = document.getElementById('tv-tooltip');
             const mapBTC = new Map(seriesBTC.map(p => [p.time, p.value]));
 
@@ -227,7 +240,6 @@ async function init() {
                 if (fullCotMap.has(timeSec)) {
                     let cot = fullCotMap.get(timeSec);
                     
-                    // ROZWIĄZANIE: Math.abs czyści znaki plus/minus również z wyskakującego okienka tooltipu
                     const formatTooltipMoney = (val) => {
                         const usd = Math.abs(val * 5 * currentPriceAtTime);
                         const formattedUsd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', notation: 'compact' }).format(usd);
