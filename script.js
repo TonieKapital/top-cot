@@ -1,8 +1,8 @@
-// --- USTAWIENIA KOLORÓW (SŁUPKI 1:1 JAK TRADING VIEW) ---
+// --- USTAWIENIA KOLORÓW ---
 const COLORS = {
     btc: '#ffffff',
-    large: '#5f96ff', // Jasny niebieski dla Speculators
-    comm: '#dc4646'   // Mocny czerwony dla Commercials
+    large: '#5f96ff', // Speculators
+    comm: '#dc4646'   // Commercials
 };
 
 // --- SILNIK BITSTAMP (1D - Cena BTC od 2017 roku) ---
@@ -116,13 +116,13 @@ async function init() {
                     commBarsData.push({ time: t, value: currentCommNet });
                     largeBarsData.push({ time: t, value: currentLargeNet });
                     
-                    // SYSTEM ZNACZNIKÓW: Wstrzykujemy dwukolorową kropkę tekstową bezpośrednio na poziom linii zero
+                    // PANCERNA IMPLEMENTACJA: Osadzamy kropki bezpośrednio jako tekstowy marker nad słupkiem
                     cotMarkers.push({
                         time: t,
-                        position: 'inBar',
-                        shape: 'circle',
-                        color: 'transparent', // Ukrywamy domyślny kształt giełdowy
-                        text: '🔵🔴',         // Nakładamy perfekcyjną, podwójną kropkę side-by-side
+                        position: 'aboveBar',
+                        shape: 'square',
+                        color: 'rgba(255, 255, 255, 0)', // Całkowicie przezroczysty kwadrat bazowy
+                        text: '🔵🔴',                    // Żywe kropki tekstowe gwarantujące render
                         size: 1
                     });
                 }
@@ -164,23 +164,23 @@ async function init() {
                 autoSize: true,
                 layout: { background: { type: 'solid', color: 'transparent' }, textColor: '#8e8e93', fontFamily: 'Inter, sans-serif' },
                 grid: { 
-                    // PRZEŁOM DESIGNU: Solidna, wyrazista siatka pionowa odcinająca każdy dzień rynkowy osobno
-                    vertLines: { color: 'rgba(255, 255, 255, 0.14)', style: LightweightCharts.LineStyle.Solid }, 
+                    // PRZYWRÓCENIE: Klasyczna, delikatna i ciemna siatka tła z samego początku
+                    vertLines: { color: 'rgba(255, 255, 255, 0.04)' }, 
                     horzLines: { color: 'rgba(255, 255, 255, 0.04)' } 
                 },
                 crosshair: {
-                    vertLine: { color: 'rgba(255, 255, 255, 0.4)', width: 1, style: LightweightCharts.LineStyle.Solid },
-                    horzLine: { color: 'rgba(255, 255, 255, 0.3)', width: 1, style: LightweightCharts.LineStyle.Solid }
+                    vertLine: { color: 'rgba(255, 255, 255, 0.2)', width: 1, style: LightweightCharts.LineStyle.Dash },
+                    horzLine: { color: 'rgba(255, 255, 255, 0.2)', width: 1, style: LightweightCharts.LineStyle.Dash }
                 },
                 rightPriceScale: { mode: LightweightCharts.PriceScaleMode.Normal, borderVisible: false, scaleMargins: { top: 0.05, bottom: 0.45 } },
                 leftPriceScale: { visible: true, mode: LightweightCharts.PriceScaleMode.Normal, borderVisible: false, scaleMargins: { top: 0.65, bottom: 0.05 } },
                 timeScale: { 
                     borderVisible: true, 
-                    borderColor: 'rgba(255, 255, 255, 0.1)',
+                    borderColor: 'rgba(255, 255, 255, 0.06)',
                     timeVisible: true, 
                     fixLeftEdge: true, 
                     fixRightEdge: true,
-                    barSpacing: 28, // Szeroki rozstaw osi czasu zapewniający potężną czytelność
+                    barSpacing: 28, 
                     minBarSpacing: 5
                 }
             });
@@ -194,7 +194,7 @@ async function init() {
             chart.priceScale('zones').applyOptions({ scaleMargins: { top: 0, bottom: 0 }, visible: false });
             zoneSeries.setData(bgData);
 
-            const zeroLine = chart.addLineSeries({ priceScaleId: 'left', color: 'rgba(255, 255, 255, 0.25)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+            const zeroLine = chart.addLineSeries({ priceScaleId: 'left', color: 'rgba(255, 255, 255, 0.15)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
             zeroLine.setData(zeroData);
 
             const commBarsSeries = chart.addHistogramSeries({ color: COLORS.comm, priceScaleId: 'left', priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
@@ -206,10 +206,9 @@ async function init() {
             const lineBTC = chart.addLineSeries({ color: COLORS.btc, lineWidth: 2, priceScaleId: 'right', priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
             lineBTC.setData(seriesBTC);
 
-            // Wstrzyknięcie znaczników bezpośrednio na serię linii odniesienia zero
-            zeroLine.setMarkers(cotMarkers);
+            // ZAKOTWICZENIE KROPEK: Nadpisujemy markery na serię słupków spekulantów, aby uniosły się nad nimi
+            largeBarsSeries.setMarkers(cotMarkers);
 
-            // PRZEŁOM SZEFA: Automatyczny, startowy zoom zawężony do 90 dni, wymuszający natychmiastowe ładowanie siatki dziennej
             const timeScale = chart.timeScale();
             const lastTime = seriesBTC[seriesBTC.length - 1].time;
             const startTime = lastTime - (90 * 86400); 
