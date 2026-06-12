@@ -31,16 +31,19 @@ body {
     border: 1px solid rgba(255, 255, 255, 0.04);
     border-radius: 16px;
     padding: 12px;
+    display: flex;
+    justify-content: center; /* Centrowanie na desktopie */
 }
 
-/* KAFELKI GLOBALNIE */
+/* KAFELKI - CZYSTY, SPRECYZOWANY UKŁAD DESKTOP */
 .stats-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    display: flex;
     gap: 12px;
+    justify-content: center;
 }
 
 .stat-card {
+    width: 250px; /* Sztywna, elegancka szerokość na komputerze */
     background: rgba(255, 255, 255, 0.02);
     border: 1px solid rgba(255, 255, 255, 0.04);
     border-radius: 12px;
@@ -48,7 +51,6 @@ body {
     display: flex;
     flex-direction: column;
     gap: 4px;
-    transition: all 0.2s ease;
 }
 
 .stat-label {
@@ -59,7 +61,7 @@ body {
 }
 
 .stat-value {
-    font-size: 20px;
+    font-size: 19px;
     font-weight: 700;
     font-variant-numeric: tabular-nums;
 }
@@ -68,8 +70,11 @@ body {
 .stat-large { border-left: 3px solid #5f96ff; }
 .stat-comm { border-left: 3px solid #dc4646; }
 
-/* REWOLUCJA MOBILE: SWIPE NA BOKI */
+/* AKTYWACJA SWIPE CAROUSEL WYŁĄCZNIE NA MOBILE (<768px) */
 @media (max-width: 768px) {
+    .glass-header {
+        display: block; /* Wyłącza centrowanie, pozwala na scroll */
+    }
     .stats-grid {
         display: flex !important;
         flex-direction: row !important;
@@ -77,19 +82,21 @@ body {
         scroll-snap-type: x mandatory !important;
         -webkit-overflow-scrolling: touch;
         gap: 10px !important;
+        justify-content: flex-start !important;
         padding-bottom: 4px;
-        scrollbar-width: none; /* Ukrywa suwak na Androidzie */
+        scrollbar-width: none;
     }
     .stats-grid::-webkit-scrollbar {
-        display: none; /* Ukrywa suwak na iPhonie */
+        display: none;
     }
     .stat-card {
-        flex: 0 0 82% !important; /* Pokazuje jeden kafelek i kawałek następnego jako znak, że można swipe'ować */
+        width: auto !important;
+        flex: 0 0 85% !important; /* Szerokość kafelka na telefonie */
         scroll-snap-align: start !important;
     }
 }
 
-/* WYKRES I INTERFEJS */
+/* INTERFEJS WYKRESU */
 #chart-wrapper {
     flex: 1;
     position: relative;
@@ -132,7 +139,7 @@ body {
     color: #ffffff;
 }
 
-/* TOOLTIP */
+/* INTERAKTNY TOOLTIP */
 #tv-tooltip {
     display: none;
     position: absolute;
@@ -170,7 +177,7 @@ body {
     margin-right: 6px;
 }
 
-/* ŁADOWANIE */
+/* LOADER */
 .loading-state {
     flex: 1;
     display: flex;

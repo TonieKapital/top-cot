@@ -86,6 +86,7 @@ async function init() {
         let commBarsData = [];
         let largeBarsData = [];
         let zeroData = [];
+        let helperLineData = []; // Ukryta linia pod kropki pomocnicze
         let cotMarkers = [];
         let fullCotMap = new Map();
 
@@ -116,13 +117,14 @@ async function init() {
                     commBarsData.push({ time: t, value: currentCommNet });
                     largeBarsData.push({ time: t, value: currentLargeNet });
                     
-                    // PANCERNA IMPLEMENTACJA: Osadzamy kropki bezpośrednio jako tekstowy marker nad słupkiem
+                    // Kropki kotwiczymy na wartości 0 ukrytej serii liniowej - to wymusi ich render w 100%
+                    helperLineData.push({ time: t, value: 0 });
                     cotMarkers.push({
                         time: t,
-                        position: 'aboveBar',
-                        shape: 'square',
-                        color: 'rgba(255, 255, 255, 0)', // Całkowicie przezroczysty kwadrat bazowy
-                        text: '🔵🔴',                    // Żywe kropki tekstowe gwarantujące render
+                        position: 'inBar',
+                        shape: 'circle',
+                        color: 'transparent',
+                        text: '🔵🔴',
                         size: 1
                     });
                 }
@@ -164,7 +166,7 @@ async function init() {
                 autoSize: true,
                 layout: { background: { type: 'solid', color: 'transparent' }, textColor: '#8e8e93', fontFamily: 'Inter, sans-serif' },
                 grid: { 
-                    // PRZYWRÓCENIE: Klasyczna, delikatna i ciemna siatka tła z samego początku
+                    // FABRYCZNY LOOK: Przywrócona bardzo ciemna, dyskretna i minimalistyczna siatka tła
                     vertLines: { color: 'rgba(255, 255, 255, 0.04)' }, 
                     horzLines: { color: 'rgba(255, 255, 255, 0.04)' } 
                 },
@@ -206,8 +208,17 @@ async function init() {
             const lineBTC = chart.addLineSeries({ color: COLORS.btc, lineWidth: 2, priceScaleId: 'right', priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
             lineBTC.setData(seriesBTC);
 
-            // ZAKOTWICZENIE KROPEK: Nadpisujemy markery na serię słupków spekulantów, aby uniosły się nad nimi
-            largeBarsSeries.setMarkers(cotMarkers);
+            // ROZWIĄZANIE ROZMYTYCH KROPEK: Tworzymy dedykowaną, przezroczystą linię pomocniczą specjalnie dla markerów tekstowych
+            const dotHelperSeries = chart.addLineSeries({
+                priceScaleId: 'left',
+                color: 'transparent',
+                lineWidth: 0,
+                priceLineVisible: false,
+                lastValueVisible: false,
+                crosshairMarkerVisible: false
+            });
+            dotHelperSeries.setData(helperLineData);
+            dotHelperSeries.setMarkers(cotMarkers); // Wstrzyknięcie podwójnych kropek na linię osi zero
 
             const timeScale = chart.timeScale();
             const lastTime = seriesBTC[seriesBTC.length - 1].time;
