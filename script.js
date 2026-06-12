@@ -1,13 +1,13 @@
-// --- USTAWIENIA KOLORÓW ---
+// --- USTAWIENIA KOLORÓW (SŁUPKI 1:1 JAK TRADING VIEW) ---
 const COLORS = {
     btc: '#ffffff',
     large: '#5f96ff', // Speculators (Mali)
-    largeFill: 'rgba(95, 150, 255, 0.25)',
+    largeFill: 'rgba(95, 150, 255, 0.85)', // Mocne krycie dla wyrazistych kolumn
     comm: '#dc4646',  // Commercials (Duzi)
-    commFill: 'rgba(220, 70, 70, 0.25)'
+    commFill: 'rgba(220, 70, 70, 0.85)'   // Mocne krycie dla wyrazistych kolumn
 };
 
-// --- SILNIK BITSTAMP (1D - Cena BTC) ---
+// --- SILNIK BITSTAMP (1D - Cena BTC od 2017 roku) ---
 async function fetchBitstampData() {
     let allCandles = [];
     let currentStartUnix = 1483228800; // 1 Stycznia 2017
@@ -45,7 +45,7 @@ async function fetchCOTData() {
     let cotMap = new Map();
     try {
         const response = await fetch("/api/cot?t=" + Date.now());
-        if (!response.ok) throw new Error("Backend Vercel zwrócił błąd statusu");
+        if (!response.ok) throw new Error("Backend Vercel nie odpowiada");
         const data = await response.json();
 
         if (Array.isArray(data)) {
@@ -54,7 +54,7 @@ async function fetchCOTData() {
                 if (!row.report_date_as_yyyy_mm_dd) return;
                 
                 let d = new Date(row.report_date_as_yyyy_mm_dd.split('T')[0] + 'T00:00:00Z');
-                d.setUTCDate(d.getUTCDate() + 3); // Wtorek -> Piątek
+                d.setUTCDate(d.getUTCDate() + 3); // Wtorek -> Piątek (Dzień publikacji)
                 let t = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) / 1000;
 
                 let commNet = (parseFloat(row.comm_positions_long_all) || 0) - (parseFloat(row.comm_positions_short_all) || 0);
@@ -88,8 +88,6 @@ async function init() {
         let bgData = [];
         let commBarsData = [];
         let largeBarsData = [];
-        let commLineData = [];
-        let largeLineData = [];
         let zeroData = [];
         let fullCotMap = new Map();
 
@@ -98,12 +96,11 @@ async function init() {
         let currentCommNet = null;
         let currentLargeNet = null;
 
+        // Synchronizacja i mapowanie danych dzień po dniu
         for (let i = 0; i < seriesBTC.length; i++) {
             let t = seriesBTC[i].time;
-            let isReleaseDay = false;
 
             while (cotIndex < cotDates.length && cotDates[cotIndex] <= t) {
-                if (cotDates[cotIndex] === t) isReleaseDay = true;
                 currentCommNet = cotMap.get(cotDates[cotIndex]).commNet;
                 currentLargeNet = cotMap.get(cotDates[cotIndex]).noncommNet;
                 cotIndex++;
@@ -116,13 +113,10 @@ async function init() {
                 if (currentCommNet === 0) bgColor = 'transparent';
                 bgData.push({ time: t, value: 1, color: bgColor });
                 
-                commLineData.push({ time: t, value: currentCommNet });
-                largeLineData.push({ time: t, value: currentLargeNet });
-
-                if (isReleaseDay) {
-                    commBarsData.push({ time: t, value: currentCommNet });
-                    largeBarsData.push({ time: t, value: currentLargeNet });
-                }
+                // Kluczowa zmiana: Popychamy dane codziennie, dzięki czemu histogram 
+                // buduje grube, ciągłe bloki kolumn na szerokość całego tygodnia (styl style_columns)
+                commBarsData.push({ time: t, value: currentCommNet });
+                largeBarsData.push({ time: t, value: currentLargeNet });
             } else {
                 bgData.push({ time: t, value: 1, color: 'transparent' });
             }
@@ -140,6 +134,7 @@ async function init() {
         document.getElementById('controls-bar').style.display = 'flex';
         document.getElementById('chart-wrapper').style.display = 'flex';
 
+        // --- INICJALIZACJA WYKRESU TRADINGVIEW ---
         setTimeout(() => {
             const chartContainer = document.getElementById('chart-main');
             const chart = LightweightCharts.createChart(chartContainer, {
@@ -156,30 +151,30 @@ async function init() {
                 chart.applyOptions({ height: entries[0].contentRect.height, width: entries[0].contentRect.width });
             }).observe(chartContainer);
 
+            // Strefy Sentymentu (Tło)
             const zoneSeries = chart.addHistogramSeries({ priceScaleId: 'zones', priceFormat: { type: 'volume' }, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
             chart.priceScale('zones').applyOptions({ scaleMargins: { top: 0, bottom: 0 }, visible: false });
             zoneSeries.setData(bgData);
 
+            // Linia Zero
             const zeroLine = chart.addLineSeries({ priceScaleId: 'left', color: 'rgba(255, 255, 255, 0.15)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
             zeroLine.setData(zeroData);
 
+            // Główne Słupki Commercials (Duzi)
             const commBarsSeries = chart.addHistogramSeries({ color: COLORS.commFill, priceScaleId: 'left', priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
             commBarsSeries.setData(commBarsData);
 
+            // Główne Słupki Speculators (Mali)
             const largeBarsSeries = chart.addHistogramSeries({ color: COLORS.largeFill, priceScaleId: 'left', priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
             largeBarsSeries.setData(largeBarsData);
 
-            const commLineSeries = chart.addLineSeries({ color: COLORS.comm, lineWidth: 2, priceScaleId: 'left', lineType: LightweightCharts.LineType.Step, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
-            commLineSeries.setData(commLineData);
-
-            const largeLineSeries = chart.addLineSeries({ color: COLORS.large, lineWidth: 2, priceScaleId: 'left', lineType: LightweightCharts.LineType.Step, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
-            largeLineSeries.setData(largeLineData);
-
+            // Linia ceny BTC
             const lineBTC = chart.addLineSeries({ color: COLORS.btc, lineWidth: 2, priceScaleId: 'right', priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
             lineBTC.setData(seriesBTC);
 
             chart.timeScale().fitContent();
 
+            // --- INTERAKTYWNY TOOLTIP ---
             const toolTip = document.getElementById('tv-tooltip');
             const mapBTC = new Map(seriesBTC.map(p => [p.time, p.value]));
 
@@ -201,12 +196,11 @@ async function init() {
                 
                 if (fullCotMap.has(timeSec)) {
                     let cot = fullCotMap.get(timeSec);
-                    if (largeLineSeries.options().visible) {
+                    if (largeBarsSeries.options().visible) {
                         html += `<div class="tooltip-row" style="margin-top: 6px;"><span style="display:flex; align-items:center;"><span class="tooltip-color-dot" style="background: ${COLORS.large};"></span><span class="tooltip-label">Speculators</span></span> <span class="tooltip-value">${formatCOT.format(cot.noncommNet)}</span></div>`;
                         showTooltip = true;
                     }
-                    if (commLineSeries.options().visible) {
-                        // FIX: Naprawiono commNet na cot.commNet, zapobiegając zamrożeniu kodu
+                    if (commBarsSeries.options().visible) {
                         html += `<div class="tooltip-row" style="margin-top: 6px;"><span style="display:flex; align-items:center;"><span class="tooltip-color-dot" style="background: ${COLORS.comm};"></span><span class="tooltip-label">Commercials</span></span> <span class="tooltip-value">${formatCOT.format(cot.commNet)}</span></div>`;
                         showTooltip = true;
                     }
@@ -222,10 +216,11 @@ async function init() {
                 toolTip.style.left = xPos + 'px'; toolTip.style.top = param.point.y + 'px';
             });
 
+            // Przełączniki widoczności przypisane bezpośrednio do serii słupków
             const controls = {
                 'btc': [lineBTC],
-                'large': [largeBarsSeries, largeLineSeries],
-                'comm': [commBarsSeries, commLineSeries, zoneSeries]
+                'large': [largeBarsSeries],
+                'comm': [commBarsSeries, zoneSeries]
             };
 
             document.querySelectorAll('.toggle-btn').forEach(btn => {
@@ -253,8 +248,7 @@ async function init() {
         }, 50);
     } catch (err) {
         console.error("Krytyczny błąd ładowania aplikacji:", err);
-        // ZABEZPIECZENIE: Jeśli wystąpi błąd, usuwamy loader i pokazujemy błąd, aby aplikacja nigdy się nie zawiesiła
-        document.getElementById('loading').innerHTML = `<span style="color: #dc4646;">⚠️ Wystąpił błąd sieciowy lub synchronizacji. Odśwież stronę (Ctrl + F5).</span>`;
+        document.getElementById('loading').innerHTML = `<span style="color: #dc4646;">⚠️ Wystąpił błąd synchronizacji. Odśwież stronę (Ctrl + F5).</span>`;
     }
 }
 
