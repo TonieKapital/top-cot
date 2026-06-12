@@ -7,93 +7,69 @@ const COLORS = {
     commFill: 'rgba(220, 70, 70, 0.25)'
 };
 
-// =====================================================================
-// PANCERNY FALLBACK (Baza awaryjna dla CodePena)
-// Jeśli darmowe proxy zablokuje połączenie, wykres weźmie te dane, 
-// żeby aplikacja NIGDY nie pokazała błędu "Brak" podczas prezentacji.
-// =====================================================================
-const EMERGENCY_COT_DATA = [
-    ['2026-04-03', -1800, 1600],
-    ['2026-04-10', -2100, 1950],
-    ['2026-04-17', -1950, 1800],
-    ['2026-04-24', -2400, 2150],
-    ['2026-05-01', -2550, 2300],
-    ['2026-05-08', -2300, 2100],
-    ['2026-05-15', -2850, 2610],
-    ['2026-05-22', -2450, 2190],
-    ['2026-05-29', -2910, 2750],
-    ['2026-06-05', -2595, 2458] // Najnowszy autentyczny raport z TV
-];
-
-// --- SILNIK BITSTAMP (1D - Cena BTC) ---
+// --- SILNIK BITSTAMP (1D - Cena BTC od 2017 roku) ---
 async function fetchBitstampData() {
     let allCandles = [];
-    let currentStartUnix = Math.floor(Date.now() / 1000) - (86400 * 300); // Ostatnie 300 dni dla płynności w CodePen
+    let currentStartUnix = 1483228800; // 1 Stycznia 2017 (Optymalizacja pod start kontraktów COT BTC)
+    let isFetching = true;
 
-    try {
+    while (isFetching) {
+        if (currentStartUnix > Math.floor(Date.now() / 1000)) break; 
         const url = `https://www.bitstamp.net/api/v2/ohlc/btcusd/?step=86400&limit=1000&start=${currentStartUnix}`;
         const response = await fetch(url);
         const json = await response.json();
 
-        if (json.data && json.data.ohlc) {
-            const candles = json.data.ohlc;
-            for (let i = 0; i < candles.length; i++) {
-                allCandles.push({
-                    time: parseInt(candles[i].timestamp),
-                    value: parseFloat(candles[i].close)
-                });
-            }
+        if (!json.data || !json.data.ohlc || json.data.ohlc.length === 0) {
+            isFetching = false; break;
         }
-    } catch (e) {
-        console.error("Błąd pobierania ceny BTC:", e);
+
+        const candles = json.data.ohlc;
+        for (let i = 0; i < candles.length; i++) {
+            allCandles.push({
+                time: parseInt(candles[i].timestamp),
+                value: parseFloat(candles[i].close)
+            });
+        }
+        currentStartUnix = parseInt(candles[candles.length - 1].timestamp) + 86400;
+        if (candles.length < 1000) isFetching = false;
     }
     return allCandles;
 }
 
-// --- SILNIK AUTOMATYCZNEGO POBIERANIA COT Z AUTOFALLBACKIEM ---
+// --- SILNIK PRODUKCYJNY COT (POBIERANIE Z TWOJEGO BACKENDU VERCEL) ---
 async function fetchCOTData() {
     let cotMap = new Map();
-    let dataLoaded = false;
-    
-    const targetUrl = "https://publicreporting.cftc.gov/resource/jun7-fc8e.json?cftc_contract_market_code=1330E1&$limit=500";
-    
     try {
-        // Zmiana na stabilniejsze AllOrigins Proxy, dedykowane dla CodePena
-        const response = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`);
-        if (!response.ok) throw new Error("Proxy offline");
-        
-        const wrapper = await response.json();
-        const data = JSON.parse(wrapper.contents);
+        // Odpytujemy Twój zabezpieczony serwer na Vercelu (api/cot.js)
+        const response = await fetch("/api/cot");
+        if (!response.ok) throw new Error("Backend produkcyjny Vercel nie odpowiada");
+        const data = await response.json();
 
-        if (Array.isArray(data) && data.length > 0) {
-            data.sort((a, b) => new Date(a.report_date_as_yyyy_mm_dd) - new Date(b.report_date_as_yyyy_mm_dd));
-            data.forEach(row => {
-                if (!row.report_date_as_yyyy_mm_dd) return;
-                let d = new Date(row.report_date_as_yyyy_mm_dd.split('T')[0] + 'T00:00:00Z');
-                d.setUTCDate(d.getUTCDate() + 3); // Wtorek -> Piątek
-                let t = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) / 1000;
+        // Sortowanie chronologiczne serii czasowej
+        data.sort((a, b) => new Date(a.report_date_as_yyyy_mm_dd) - new Date(b.report_date_as_yyyy_mm_dd));
 
-                let commNet = (parseFloat(row.comm_positions_long_all) || 0) - (parseFloat(row.comm_positions_short_all) || 0);
-                let noncommNet = (parseFloat(row.noncomm_positions_long_all) || 0) - (parseFloat(row.noncomm_positions_short_all) || 0);
-
-                cotMap.set(t, { commNet, noncommNet });
-            });
-            dataLoaded = true;
-            console.log("Sukces! Dane COT pobrane automatycznie przez API.");
-        }
-    } catch(e) {
-        console.warn("Proxy CodePena zablokowane. Uruchamiam system awaryjny (Embedded Data).");
-    }
-
-    // Jeśli API zawiodło, bezgłośnie ładujemy najnowsze wbudowane punkty danych
-    if (!dataLoaded) {
-        EMERGENCY_COT_DATA.forEach(row => {
-            let d = new Date(row[0] + 'T00:00:00Z');
+        data.forEach(row => {
+            if (!row.report_date_as_yyyy_mm_dd) return;
+            
+            let d = new Date(row.report_date_as_yyyy_mm_dd.split('T')[0] + 'T00:00:00Z');
+            d.setUTCDate(d.getUTCDate() + 3); // Przesunięcie wtorek -> piątek (Dzień publikacji raportu)
             let t = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) / 1000;
-            cotMap.set(t, { commNet: row[1], noncommNet: row[2] });
+
+            let commNet = (parseFloat(row.comm_positions_long_all) || 0) - (parseFloat(row.comm_positions_short_all) || 0);
+            let noncommNet = (parseFloat(row.noncomm_positions_long_all) || 0) - (parseFloat(row.noncomm_positions_short_all) || 0);
+
+            // Łączenie i sumowanie danych (odpowiednik opcji "All" z TradingView)
+            if (cotMap.has(t)) {
+                let existing = cotMap.get(t);
+                existing.commNet += commNet;
+                existing.noncommNet += noncommNet;
+            } else {
+                cotMap.set(t, { commNet, noncommNet });
+            }
         });
+    } catch(e) {
+        console.error("Krytyczny błąd pobierania danych z Twojego API Vercel:", e);
     }
-    
     return cotMap;
 }
 
@@ -120,6 +96,7 @@ async function init() {
         let currentCommNet = null;
         let currentLargeNet = null;
 
+        // Budowanie płynnych linii schodkowych zsynchronizowanych z ceną BTC 1D
         for (let i = 0; i < seriesBTC.length; i++) {
             let t = seriesBTC[i].time;
             let isReleaseDay = false;
@@ -134,13 +111,16 @@ async function init() {
             if (currentCommNet !== null) {
                 fullCotMap.set(t, { commNet: currentCommNet, noncommNet: currentLargeNet });
                 
+                // Kolorowanie tła wskaźnika w zależności od sentymentu Commercials
                 let bgColor = currentCommNet > 0 ? 'rgba(42, 239, 24, 0.05)' : 'rgba(238, 23, 23, 0.05)';
                 if (currentCommNet === 0) bgColor = 'transparent';
                 bgData.push({ time: t, value: 1, color: bgColor });
                 
+                // Linie konturowe (Stepline)
                 commLineData.push({ time: t, value: currentCommNet });
                 largeLineData.push({ time: t, value: currentLargeNet });
 
+                // Słupki pionowe rysowane wyłącznie w oficjalne piątki publikacji
                 if (isReleaseDay) {
                     commBarsData.push({ time: t, value: currentCommNet });
                     largeBarsData.push({ time: t, value: currentLargeNet });
@@ -154,6 +134,7 @@ async function init() {
         const formatUSD = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
         const formatCOT = new Intl.NumberFormat('en-US');
 
+        // Wstrzykiwanie najnowszych wartości do górnych kart statystyk
         document.getElementById('val-btc').innerText = formatUSD.format(seriesBTC[seriesBTC.length - 1].value);
         document.getElementById('val-large').innerText = currentLargeNet !== null ? formatCOT.format(currentLargeNet) : "Brak";
         document.getElementById('val-comm').innerText = currentCommNet !== null ? formatCOT.format(currentCommNet) : "Brak";
@@ -162,6 +143,7 @@ async function init() {
         document.getElementById('controls-bar').style.display = 'flex';
         document.getElementById('chart-wrapper').style.display = 'flex';
 
+        // --- INICJALIZACJA TRADINGVIEW LIGHTWEIGHT CHARTS ---
         setTimeout(() => {
             const chartContainer = document.getElementById('chart-main');
             const chart = LightweightCharts.createChart(chartContainer, {
@@ -178,30 +160,36 @@ async function init() {
                 chart.applyOptions({ height: entries[0].contentRect.height, width: entries[0].contentRect.width });
             }).observe(chartContainer);
 
+            // Warstwa Stref Tła (Sentyment)
             const zoneSeries = chart.addHistogramSeries({ priceScaleId: 'zones', priceFormat: { type: 'volume' }, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
             chart.priceScale('zones').applyOptions({ scaleMargins: { top: 0, bottom: 0 }, visible: false });
             zoneSeries.setData(bgData);
 
+            // Linia Odniesienia Zero
             const zeroLine = chart.addLineSeries({ priceScaleId: 'left', color: 'rgba(255, 255, 255, 0.15)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
             zeroLine.setData(zeroData);
 
+            // Histogramy Słupków
             const commBarsSeries = chart.addHistogramSeries({ color: COLORS.commFill, priceScaleId: 'left', priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
             commBarsSeries.setData(commBarsData);
 
             const largeBarsSeries = chart.addHistogramSeries({ color: COLORS.largeFill, priceScaleId: 'left', priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
             largeBarsSeries.setData(largeBarsData);
 
+            // Linie obrysów (Schodki 1:1 z plot.style_steplinebr z TV)
             const commLineSeries = chart.addLineSeries({ color: COLORS.comm, lineWidth: 2, priceScaleId: 'left', lineType: LightweightCharts.LineType.Step, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
             commLineSeries.setData(commLineData);
 
             const largeLineSeries = chart.addLineSeries({ color: COLORS.large, lineWidth: 2, priceScaleId: 'left', lineType: LightweightCharts.LineType.Step, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
             largeLineSeries.setData(largeLineData);
 
+            // Główna Linia Ceny Bitcoina
             const lineBTC = chart.addLineSeries({ color: COLORS.btc, lineWidth: 2, priceScaleId: 'right', priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
             lineBTC.setData(seriesBTC);
 
             chart.timeScale().fitContent();
 
+            // --- SYSTEM INTERAKTYWNEGO TOOLTIPU ---
             const toolTip = document.getElementById('tv-tooltip');
             const mapBTC = new Map(seriesBTC.map(p => [p.time, p.value]));
 
@@ -243,6 +231,7 @@ async function init() {
                 toolTip.style.left = xPos + 'px'; toolTip.style.top = param.point.y + 'px';
             });
 
+            // Obsługa przycisków sterujących widocznością serii danych
             const controls = {
                 'btc': [lineBTC],
                 'large': [largeBarsSeries, largeLineSeries],
@@ -273,7 +262,7 @@ async function init() {
 
         }, 50);
     } catch (err) {
-        console.error("Błąd ładowania aplikacji:", err);
+        console.error("Krytyczny błąd ładowania aplikacji:", err);
     }
 }
 
