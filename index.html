@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lepszy COT by Tonie Kapital</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./style.css">
+    <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+    <div class="dashboard">
+        <header class="glass-header">
+            <div class="stats-grid">
+                <div class="stat-card stat-btc">
+                    <span class="stat-label">CENA BTC (LIVE)</span>
+                    <span class="stat-value" id="val-btc">Ładowanie...</span>
+                </div>
+                <div class="stat-card stat-large">
+                    <span class="stat-label">SPECULATORS (MALI)</span>
+                    <span class="stat-value" id="val-large">Ładowanie...</span>
+                </div>
+                <div class="stat-card stat-comm">
+                    <span class="stat-label">COMMERCIALS (DUZI)</span>
+                    <span class="stat-value" id="val-comm">Ładowanie...</span>
+                </div>
+            </div>
+        </header>
+        
+        <div id="loading" class="loading-state">
+            <div class="spinner"></div> Budowanie raportu COT i pobieranie danych...
+        </div>
+        
+        <div class="timeframe-selector" style="display: none;" id="controls-bar">
+            <button class="tf-btn" id="toggle-log">Skala: Log</button>
+            <span style="width: 1px; height: 16px; background: rgba(255,255,255,0.1); margin: 0 4px; align-self: center;"></span>
+            <button class="tf-btn active toggle-btn" data-series="btc">Cena BTC</button>
+            <button class="tf-btn active toggle-btn" data-series="large">Speculators</button>
+            <button class="tf-btn active toggle-btn" data-series="comm">Commercials</button>
+        </div>
+
+        <div id="chart-wrapper" style="display: none;">
+            <div id="chart-main"></div>
+            <div id="tv-tooltip"></div>
+        </div>
+        
+        <footer>
+            Dane: Bitstamp API, US CFTC (Live) & Tonie Kapital History • Algorytm: Tonie Kapital
+        </footer>
+    </div>
+    
+    <script src="./script.js"></script>
+</body>
+</html>
