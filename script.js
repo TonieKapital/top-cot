@@ -107,7 +107,7 @@ async function init() {
             if (currentCommNet !== null) {
                 fullCotMap.set(t, { commNet: currentCommNet, noncommNet: currentLargeNet });
                 
-                let bgColor = currentCommNet > 0 ? 'rgba(42, 239, 24, 0.03)' : 'rgba(238, 23, 23, 0.03)';
+                let bgColor = currentCommNet > 0 ? 'rgba(42, 239, 24, 0.02)' : 'rgba(238, 23, 23, 0.02)';
                 if (currentCommNet === 0) bgColor = 'transparent';
                 bgData.push({ time: t, color: bgColor, value: 1 });
                 
@@ -125,21 +125,20 @@ async function init() {
         const formatUSD = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
         const formatCOT = new Intl.NumberFormat('en-US');
 
-        // Funkcja pomocnicza: Konwertuje kontrakty na kapitał w USD (Kompaktowy format M / B)
+        // ROZWIĄZANIE: Math.abs usuwa znaki + oraz - z paneli informacyjnych
         const formatMoneyExposure = (contracts, btcPrice) => {
             if (contracts === null) return "Brak";
-            const cashValue = contracts * 5 * btcPrice; // 1 Kontrakt CME = 5 BTC
-            const prefix = cashValue >= 0 ? "+" : "";
+            const cashValue = Math.abs(contracts * 5 * btcPrice); 
+            const absContracts = Math.abs(contracts); 
             const cashFormatted = new Intl.NumberFormat('en-US', {
                 style: 'currency',
                 currency: 'USD',
                 notation: 'compact',
                 compactDisplay: 'short'
             }).format(cashValue);
-            return `${prefix}${cashFormatted} (${formatCOT.format(contracts)})`;
+            return `${cashFormatted} (${formatCOT.format(absContracts)})`;
         };
 
-        // Wstrzyknięcie przeliczonych wartości finansowych do górnego panelu
         document.getElementById('val-btc').innerText = formatUSD.format(latestBTCPrice);
         document.getElementById('val-large').innerText = formatMoneyExposure(currentLargeNet, latestBTCPrice);
         document.getElementById('val-comm').innerText = formatMoneyExposure(currentCommNet, latestBTCPrice);
@@ -155,17 +154,24 @@ async function init() {
                 autoSize: true,
                 layout: { background: { type: 'solid', color: 'transparent' }, textColor: '#8e8e93', fontFamily: 'Inter, sans-serif' },
                 grid: { 
-                    vertLines: { color: 'rgba(255, 255, 255, 0.12)', style: LightweightCharts.LineStyle.Dotted }, // Wyraźna, kropkowana siatka pionowa
+                    // ROZWIĄZANIE: Mocniejsza, ciągła siatka pionowa oddzielająca poszczególne dni rynkowe
+                    vertLines: { color: 'rgba(255, 255, 255, 0.15)', style: LightweightCharts.LineStyle.Solid }, 
                     horzLines: { color: 'rgba(255, 255, 255, 0.04)' } 
+                },
+                crosshair: {
+                    // ROZWIĄZANIE: Ciągły, wyrazisty celownik ułatwiający perfekcyjne celowanie w dany dzień
+                    vertLine: { color: 'rgba(255, 255, 255, 0.4)', width: 1, style: LightweightCharts.LineStyle.Solid },
+                    horzLine: { color: 'rgba(255, 255, 255, 0.3)', width: 1, style: LightweightCharts.LineStyle.Solid }
                 },
                 rightPriceScale: { mode: LightweightCharts.PriceScaleMode.Normal, borderVisible: false, scaleMargins: { top: 0.05, bottom: 0.45 } },
                 leftPriceScale: { visible: true, mode: LightweightCharts.PriceScaleMode.Normal, borderVisible: false, scaleMargins: { top: 0.65, bottom: 0.05 } },
                 timeScale: { 
-                    borderVisible: false, 
+                    borderVisible: true, 
+                    borderColor: 'rgba(255, 255, 255, 0.1)',
                     timeVisible: true, 
                     fixLeftEdge: true, 
                     fixRightEdge: true,
-                    barSpacing: 18, // ZMIANA: Zwiększone odstępy, aby słupki zyskały idealną separację i grubość
+                    barSpacing: 28, // ROZWIĄZANIE: Ekstremalny rozstaw osi x, eliminujący ścisk i zbijanie dni
                     minBarSpacing: 5
                 }
             });
@@ -191,13 +197,12 @@ async function init() {
             const lineBTC = chart.addLineSeries({ color: COLORS.btc, lineWidth: 2, priceScaleId: 'right', priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
             lineBTC.setData(seriesBTC);
 
-            // Wyśrodkowany startowy zoom na ostatnie 7 miesięcy
             const timeScale = chart.timeScale();
             const lastTime = seriesBTC[seriesBTC.length - 1].time;
             const startTime = lastTime - (210 * 86400); 
             timeScale.setVisibleRange({ from: startTime, to: lastTime });
 
-            // --- INTERAKTYWNY TOOLTIP (PRZELICZANIE KASY NA ŻYWO POD KURSOREM) ---
+            // --- INTERAKTYWNY TOOLTIP (BEZ ZNAKÓW +/-) ---
             const toolTip = document.getElementById('tv-tooltip');
             const mapBTC = new Map(seriesBTC.map(p => [p.time, p.value]));
 
@@ -222,10 +227,11 @@ async function init() {
                 if (fullCotMap.has(timeSec)) {
                     let cot = fullCotMap.get(timeSec);
                     
+                    // ROZWIĄZANIE: Math.abs czyści znaki plus/minus również z wyskakującego okienka tooltipu
                     const formatTooltipMoney = (val) => {
-                        const usd = val * 5 * currentPriceAtTime;
+                        const usd = Math.abs(val * 5 * currentPriceAtTime);
                         const formattedUsd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', notation: 'compact' }).format(usd);
-                        return `${usd >= 0 ? "+" : ""}${formattedUsd} (${formatCOT.format(val)})`;
+                        return `${formattedUsd} (${formatCOT.format(Math.abs(val))})`;
                     };
 
                     if (largeBarsSeries.options().visible) {
