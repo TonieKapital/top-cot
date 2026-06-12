@@ -1,10 +1,8 @@
 // --- USTAWIENIA KOLORÓW (SŁUPKI 1:1 JAK TRADING VIEW) ---
 const COLORS = {
     btc: '#ffffff',
-    large: '#5f96ff', // Speculators (Mali)
-    largeFill: 'rgba(95, 150, 255, 0.85)', // Mocne krycie dla wyrazistych kolumn
-    comm: '#dc4646',  // Commercials (Duzi)
-    commFill: 'rgba(220, 70, 70, 0.85)'   // Mocne krycie dla wyrazistych kolumn
+    largeFill: 'rgba(95, 150, 255, 0.7)', // Kolumny Speculators
+    commFill: 'rgba(220, 70, 70, 0.7)'    // Kolumny Commercials
 };
 
 // --- SILNIK BITSTAMP (1D - Cena BTC od 2017 roku) ---
@@ -54,7 +52,7 @@ async function fetchCOTData() {
                 if (!row.report_date_as_yyyy_mm_dd) return;
                 
                 let d = new Date(row.report_date_as_yyyy_mm_dd.split('T')[0] + 'T00:00:00Z');
-                d.setUTCDate(d.getUTCDate() + 3); // Wtorek -> Piątek (Dzień publikacji)
+                d.setUTCDate(d.getUTCDate() + 3); // Wtorek -> Piątek
                 let t = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) / 1000;
 
                 let commNet = (parseFloat(row.comm_positions_long_all) || 0) - (parseFloat(row.comm_positions_short_all) || 0);
@@ -96,7 +94,6 @@ async function init() {
         let currentCommNet = null;
         let currentLargeNet = null;
 
-        // Synchronizacja i mapowanie danych dzień po dniu
         for (let i = 0; i < seriesBTC.length; i++) {
             let t = seriesBTC[i].time;
 
@@ -111,14 +108,12 @@ async function init() {
                 
                 let bgColor = currentCommNet > 0 ? 'rgba(42, 239, 24, 0.05)' : 'rgba(238, 23, 23, 0.05)';
                 if (currentCommNet === 0) bgColor = 'transparent';
-                bgData.push({ time: t, value: 1, color: bgColor });
+                bgData.push({ time: t, color: bgColor, value: 1 });
                 
-                // Kluczowa zmiana: Popychamy dane codziennie, dzięki czemu histogram 
-                // buduje grube, ciągłe bloki kolumn na szerokość całego tygodnia (styl style_columns)
                 commBarsData.push({ time: t, value: currentCommNet });
                 largeBarsData.push({ time: t, value: currentLargeNet });
             } else {
-                bgData.push({ time: t, value: 1, color: 'transparent' });
+                bgData.push({ time: t, color: 'transparent', value: 1 });
             }
             zeroData.push({ time: t, value: 0 });
         }
@@ -151,20 +146,20 @@ async function init() {
                 chart.applyOptions({ height: entries[0].contentRect.height, width: entries[0].contentRect.width });
             }).observe(chartContainer);
 
-            // Strefy Sentymentu (Tło)
+            // Tło sentymentu
             const zoneSeries = chart.addHistogramSeries({ priceScaleId: 'zones', priceFormat: { type: 'volume' }, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
             chart.priceScale('zones').applyOptions({ scaleMargins: { top: 0, bottom: 0 }, visible: false });
             zoneSeries.setData(bgData);
 
-            // Linia Zero
+            // Przerywana linia zero
             const zeroLine = chart.addLineSeries({ priceScaleId: 'left', color: 'rgba(255, 255, 255, 0.15)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
             zeroLine.setData(zeroData);
 
-            // Główne Słupki Commercials (Duzi)
+            // Słupki Commercials (Duzi)
             const commBarsSeries = chart.addHistogramSeries({ color: COLORS.commFill, priceScaleId: 'left', priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
             commBarsSeries.setData(commBarsData);
 
-            // Główne Słupki Speculators (Mali)
+            // Słupki Speculators (Mali)
             const largeBarsSeries = chart.addHistogramSeries({ color: COLORS.largeFill, priceScaleId: 'left', priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
             largeBarsSeries.setData(largeBarsData);
 
@@ -172,7 +167,11 @@ async function init() {
             const lineBTC = chart.addLineSeries({ color: COLORS.btc, lineWidth: 2, priceScaleId: 'right', priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
             lineBTC.setData(seriesBTC);
 
-            chart.timeScale().fitContent();
+            // AUTOMATYCZNY ZOOM: Ustawienie widoku na ostatnie ~7 miesięcy (210 dni) od razu po wejściu na stronę
+            const timeScale = chart.timeScale();
+            const lastTime = seriesBTC[seriesBTC.length - 1].time;
+            const startTime = lastTime - (210 * 86400); 
+            timeScale.setVisibleRange({ from: startTime, to: lastTime });
 
             // --- INTERAKTYWNY TOOLTIP ---
             const toolTip = document.getElementById('tv-tooltip');
@@ -197,11 +196,11 @@ async function init() {
                 if (fullCotMap.has(timeSec)) {
                     let cot = fullCotMap.get(timeSec);
                     if (largeBarsSeries.options().visible) {
-                        html += `<div class="tooltip-row" style="margin-top: 6px;"><span style="display:flex; align-items:center;"><span class="tooltip-color-dot" style="background: ${COLORS.large};"></span><span class="tooltip-label">Speculators</span></span> <span class="tooltip-value">${formatCOT.format(cot.noncommNet)}</span></div>`;
+                        html += `<div class="tooltip-row" style="margin-top: 6px;"><span style="display:flex; align-items:center;"><span class="tooltip-color-dot" style="background: rgba(95, 150, 255, 1);"></span><span class="tooltip-label">Speculators</span></span> <span class="tooltip-value">${formatCOT.format(cot.noncommNet)}</span></div>`;
                         showTooltip = true;
                     }
                     if (commBarsSeries.options().visible) {
-                        html += `<div class="tooltip-row" style="margin-top: 6px;"><span style="display:flex; align-items:center;"><span class="tooltip-color-dot" style="background: ${COLORS.comm};"></span><span class="tooltip-label">Commercials</span></span> <span class="tooltip-value">${formatCOT.format(cot.commNet)}</span></div>`;
+                        html += `<div class="tooltip-row" style="margin-top: 6px;"><span style="display:flex; align-items:center;"><span class="tooltip-color-dot" style="background: rgba(220, 70, 70, 1);"></span><span class="tooltip-label">Commercials</span></span> <span class="tooltip-value">${formatCOT.format(cot.commNet)}</span></div>`;
                         showTooltip = true;
                     }
                 }
@@ -216,16 +215,13 @@ async function init() {
                 toolTip.style.left = xPos + 'px'; toolTip.style.top = param.point.y + 'px';
             });
 
-            // Przełączniki widoczności przypisane bezpośrednio do serii słupków
-            const controls = {
-                'btc': [lineBTC],
-                'large': [largeBarsSeries],
-                'comm': [commBarsSeries, zoneSeries]
-            };
+            // Obsługa wyłącznie przycisku ukrywania linii ceny BTC
+            const controls = { 'btc': [lineBTC] };
 
             document.querySelectorAll('.toggle-btn').forEach(btn => {
                 btn.addEventListener('click', function() {
                     const key = this.getAttribute('data-series');
+                    if (!controls[key]) return;
                     const isActive = this.classList.contains('active');
                     if (isActive) {
                         this.classList.remove('active'); controls[key].forEach(l => l.applyOptions({ visible: false }));
