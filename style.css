@@ -54,11 +54,10 @@ body {
     align-items: center; 
 }
 
-/* Kolory ramek dolnych */
 .stat-btc { border-bottom: 2px solid #ffffff; }
 .stat-large { border-bottom: 2px solid #5f96ff; }
 .stat-comm { border-bottom: 2px solid #dc4646; }
-.stat-countdown { border-bottom: 2px solid #e5c158; } /* Złoty akcent pod odliczanie */
+.stat-countdown { border-bottom: 2px solid #e5c158; }
 
 .stat-label { 
     font-size: 11px; 
@@ -117,9 +116,6 @@ body {
     box-shadow: 0 2px 8px rgba(0,0,0,0.2); 
     color: #ffffff; 
 }
-#toggle-log.active { color: #ffffff; }
-
-.tf-btn.active[data-series="btc"] { color: #ffffff; } 
 
 #chart-wrapper { 
     flex-grow: 1; 

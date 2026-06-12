@@ -11,7 +11,7 @@ function startReportCountdown() {
         const now = new Date();
         let targetFriday = new Date(now);
         
-        targetFriday.setUTCHours(19, 30, 0, 0); // Oficjalna publikacja CFTC (15:30 EST / 21:30 CEST)
+        targetFriday.setUTCHours(19, 30, 0, 0); // Publikacja rządu USA (15:30 EST / 21:30 CEST)
         
         let daysToAdd = (5 - now.getUTCDay() + 7) % 7;
         if (daysToAdd === 0 && (now.getUTCHours() > 19 || (now.getUTCHours() === 19 && now.getUTCMinutes() >= 30))) {
@@ -124,7 +124,6 @@ async function init() {
         let currentCommNet = null;
         let currentLargeNet = null;
 
-        // Budowanie standardowej serii historycznej dzień po dniu
         for (let i = 0; i < seriesBTC.length; i++) {
             let t = seriesBTC[i].time;
             let isReleaseDay = false;
@@ -146,39 +145,24 @@ async function init() {
                 if (isReleaseDay) {
                     commBarsData.push({ time: t, value: currentCommNet });
                     largeBarsData.push({ time: t, value: currentLargeNet });
+                    
+                    helperLineData.push({ time: t, value: 0 });
+                    
+                    // Kropki informacyjne na historycznych wtorkach (zostają dla orientacji)
+                    cotMarkers.push({
+                        time: t,
+                        position: 'inBar',
+                        shape: 'circle',
+                        color: 'transparent',
+                        text: '🔵🔴',
+                        size: 1
+                    });
                 }
             } else {
                 bgData.push({ time: t, color: 'transparent', value: 1 });
             }
             zeroData.push({ time: t, value: 0 });
             helperLineData.push({ time: t, value: 0 });
-        }
-
-        // --- PANCERNE PROJEKTOWANIE PRZYSZŁOŚCI (BEZ DZIUR W OSI CZASU) ---
-        if (cotDates.length > 0) {
-            const lastReportTuesday = cotDates[cotDates.length - 1];
-            const nextReportTuesday = lastReportTuesday + (7 * 86400); 
-            
-            let lastCryptoDay = seriesBTC[seriesBTC.length - 1].time;
-            let fillTime = lastCryptoDay + 86400;
-            
-            // ROZWIĄZANIE CRASHU: Wypełniamy kalendarz giełdowy dzień po dniu od dzisiaj do przyszłego wtorku. 
-            // Brak dziur w datach = brak wysypania wykresu.
-            while (fillTime <= nextReportTuesday) {
-                zeroData.push({ time: fillTime, value: 0 });
-                helperLineData.push({ time: fillTime, value: 0 });
-                fillTime += 86400;
-            }
-            
-            // Bezpieczne zakotwiczenie markera na wygenerowanej bezbłędnie dacie
-            cotMarkers.push({
-                time: nextReportTuesday,
-                position: 'inBar',
-                shape: 'circle',
-                color: '#e5c158',
-                text: '⏳ CO-T',
-                size: 2
-            });
         }
 
         const latestBTCPrice = seriesBTC[seriesBTC.length - 1].value;
@@ -227,7 +211,7 @@ async function init() {
                     borderColor: 'rgba(255, 255, 255, 0.06)',
                     timeVisible: true, 
                     fixLeftEdge: true, 
-                    fixRightEdge: false, 
+                    fixRightEdge: true, // Zablokowanie osi na dzisiejszym dniu (czysty fabryczny look)
                     barSpacing: 28, 
                     minBarSpacing: 5
                 }
@@ -254,7 +238,6 @@ async function init() {
             const lineBTC = chart.addLineSeries({ color: COLORS.btc, lineWidth: 2, priceScaleId: 'right', priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
             lineBTC.setData(seriesBTC);
 
-            // Wstrzyknięcie markerów na dedykowaną, stałą linię pomocniczą (Gwarancja renderu punktów widokowych)
             const dotHelperSeries = chart.addLineSeries({
                 priceScaleId: 'left',
                 color: 'transparent',
@@ -267,7 +250,7 @@ async function init() {
             dotHelperSeries.setMarkers(cotMarkers);
 
             const timeScale = chart.timeScale();
-            const lastTime = zeroData[zeroData.length - 1].time; 
+            const lastTime = seriesBTC[seriesBTC.length - 1].time; 
             const startTime = lastTime - (90 * 86400); 
             timeScale.setVisibleRange({ from: startTime, to: lastTime });
 
