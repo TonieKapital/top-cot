@@ -216,6 +216,7 @@ async function init() {
                         showTooltip = true;
                     }
                     if (commLineSeries.options().visible) {
+                        // FIX: Zamieniono nieistniejące 'commNet' na prawidłowe 'cot.commNet'
                         html += `<div class="tooltip-row" style="margin-top: 6px;"><span style="display:flex; align-items:center;"><span class="tooltip-color-dot" style="background: ${COLORS.comm};"></span><span class="tooltip-label">Commercials</span></span> <span class="tooltip-value">${formatCOT.format(cot.commNet)}</span></div>`;
                         showTooltip = true;
                     }
