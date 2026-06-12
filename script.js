@@ -1,4 +1,4 @@
-// --- USTAWIENIA KOLORÓW (PODKRĘCONE I WYRAZISTE SŁUPKI) ---
+// --- USTAWIENIA KOLORÓW (SŁUPKI 1:1 JAK TRADING VIEW) ---
 const COLORS = {
     btc: '#ffffff',
     large: '#5f96ff', // Jasny niebieski dla Speculators
@@ -51,7 +51,6 @@ async function fetchCOTData() {
             data.forEach(row => {
                 if (!row.report_date_as_yyyy_mm_dd) return;
                 
-                // Pobieramy czystą datę z raportu rządu USA (zawsze oryginalny WTOREK)
                 let d = new Date(row.report_date_as_yyyy_mm_dd.split('T')[0] + 'T00:00:00Z');
                 let t = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) / 1000;
 
@@ -106,14 +105,12 @@ async function init() {
             }
 
             if (currentCommNet !== null) {
-                // Zachowujemy ciągłość mapy dla płynnego tooltipu dzień po dniu
                 fullCotMap.set(t, { commNet: currentCommNet, noncommNet: currentLargeNet });
                 
                 let bgColor = currentCommNet > 0 ? 'rgba(42, 239, 24, 0.03)' : 'rgba(238, 23, 23, 0.03)';
                 if (currentCommNet === 0) bgColor = 'transparent';
                 bgData.push({ time: t, color: bgColor, value: 1 });
                 
-                // POPRAWKA DESIGNU: Słupki generujemy TYLKO raz w tygodniu, w oryginalny dzień raportu (wtorek)
                 if (isReleaseDay) {
                     commBarsData.push({ time: t, value: currentCommNet });
                     largeBarsData.push({ time: t, value: currentLargeNet });
@@ -124,12 +121,28 @@ async function init() {
             zeroData.push({ time: t, value: 0 });
         }
 
+        const latestBTCPrice = seriesBTC[seriesBTC.length - 1].value;
         const formatUSD = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
         const formatCOT = new Intl.NumberFormat('en-US');
 
-        document.getElementById('val-btc').innerText = formatUSD.format(seriesBTC[seriesBTC.length - 1].value);
-        document.getElementById('val-large').innerText = currentLargeNet !== null ? formatCOT.format(currentLargeNet) : "Brak";
-        document.getElementById('val-comm').innerText = currentCommNet !== null ? formatCOT.format(currentCommNet) : "Brak";
+        // Funkcja pomocnicza: Konwertuje kontrakty na kapitał w USD (Kompaktowy format M / B)
+        const formatMoneyExposure = (contracts, btcPrice) => {
+            if (contracts === null) return "Brak";
+            const cashValue = contracts * 5 * btcPrice; // 1 Kontrakt CME = 5 BTC
+            const prefix = cashValue >= 0 ? "+" : "";
+            const cashFormatted = new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: 'USD',
+                notation: 'compact',
+                compactDisplay: 'short'
+            }).format(cashValue);
+            return `${prefix}${cashFormatted} (${formatCOT.format(contracts)})`;
+        };
+
+        // Wstrzyknięcie przeliczonych wartości finansowych do górnego panelu
+        document.getElementById('val-btc').innerText = formatUSD.format(latestBTCPrice);
+        document.getElementById('val-large').innerText = formatMoneyExposure(currentLargeNet, latestBTCPrice);
+        document.getElementById('val-comm').innerText = formatMoneyExposure(currentCommNet, latestBTCPrice);
 
         document.getElementById('loading').style.display = 'none';
         document.getElementById('controls-bar').style.display = 'flex';
@@ -141,10 +154,20 @@ async function init() {
             const chart = LightweightCharts.createChart(chartContainer, {
                 autoSize: true,
                 layout: { background: { type: 'solid', color: 'transparent' }, textColor: '#8e8e93', fontFamily: 'Inter, sans-serif' },
-                grid: { vertLines: { color: 'rgba(255, 255, 255, 0.04)' }, horzLines: { color: 'rgba(255, 255, 255, 0.04)' } },
+                grid: { 
+                    vertLines: { color: 'rgba(255, 255, 255, 0.12)', style: LightweightCharts.LineStyle.Dotted }, // Wyraźna, kropkowana siatka pionowa
+                    horzLines: { color: 'rgba(255, 255, 255, 0.04)' } 
+                },
                 rightPriceScale: { mode: LightweightCharts.PriceScaleMode.Normal, borderVisible: false, scaleMargins: { top: 0.05, bottom: 0.45 } },
                 leftPriceScale: { visible: true, mode: LightweightCharts.PriceScaleMode.Normal, borderVisible: false, scaleMargins: { top: 0.65, bottom: 0.05 } },
-                timeScale: { borderVisible: false, timeVisible: true, fixLeftEdge: true, fixRightEdge: true }
+                timeScale: { 
+                    borderVisible: false, 
+                    timeVisible: true, 
+                    fixLeftEdge: true, 
+                    fixRightEdge: true,
+                    barSpacing: 18, // ZMIANA: Zwiększone odstępy, aby słupki zyskały idealną separację i grubość
+                    minBarSpacing: 5
+                }
             });
 
             new ResizeObserver(entries => {
@@ -152,34 +175,29 @@ async function init() {
                 chart.applyOptions({ height: entries[0].contentRect.height, width: entries[0].contentRect.width });
             }).observe(chartContainer);
 
-            // Tło sentymentu
             const zoneSeries = chart.addHistogramSeries({ priceScaleId: 'zones', priceFormat: { type: 'volume' }, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
             chart.priceScale('zones').applyOptions({ scaleMargins: { top: 0, bottom: 0 }, visible: false });
             zoneSeries.setData(bgData);
 
-            // Przerywana linia zero
             const zeroLine = chart.addLineSeries({ priceScaleId: 'left', color: 'rgba(255, 255, 255, 0.15)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
             zeroLine.setData(zeroData);
 
-            // Słupki Commercials (Duzi) - Czysty Styl Kolumnowy z TV
             const commBarsSeries = chart.addHistogramSeries({ color: COLORS.comm, priceScaleId: 'left', priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
             commBarsSeries.setData(commBarsData);
 
-            // Słupki Speculators (Mali) - Czysty Styl Kolumnowy z TV
             const largeBarsSeries = chart.addHistogramSeries({ color: COLORS.large, priceScaleId: 'left', priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
             largeBarsSeries.setData(largeBarsData);
 
-            // Linia ceny BTC
             const lineBTC = chart.addLineSeries({ color: COLORS.btc, lineWidth: 2, priceScaleId: 'right', priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
             lineBTC.setData(seriesBTC);
 
-            // DOPASOWANIE ZOOMU: Dokładnie wycentrowany podgląd na ostatnie ~7 miesięcy
+            // Wyśrodkowany startowy zoom na ostatnie 7 miesięcy
             const timeScale = chart.timeScale();
             const lastTime = seriesBTC[seriesBTC.length - 1].time;
             const startTime = lastTime - (210 * 86400); 
             timeScale.setVisibleRange({ from: startTime, to: lastTime });
 
-            // --- INTERAKTYWNY TOOLTIP ---
+            // --- INTERAKTYWNY TOOLTIP (PRZELICZANIE KASY NA ŻYWO POD KURSOREM) ---
             const toolTip = document.getElementById('tv-tooltip');
             const mapBTC = new Map(seriesBTC.map(p => [p.time, p.value]));
 
@@ -194,6 +212,8 @@ async function init() {
                 let html = `<div class="tooltip-date">${dateStr}</div>`;
                 let showTooltip = false;
 
+                const currentPriceAtTime = mapBTC.get(timeSec) || latestBTCPrice;
+
                 if (lineBTC.options().visible && mapBTC.has(timeSec)) {
                     html += `<div class="tooltip-row"><span style="display:flex; align-items:center;"><span class="tooltip-color-dot" style="background: ${COLORS.btc};"></span><span class="tooltip-label">Cena BTC</span></span> <span class="tooltip-value">${formatUSD.format(mapBTC.get(timeSec))}</span></div>`;
                     showTooltip = true;
@@ -201,12 +221,19 @@ async function init() {
                 
                 if (fullCotMap.has(timeSec)) {
                     let cot = fullCotMap.get(timeSec);
+                    
+                    const formatTooltipMoney = (val) => {
+                        const usd = val * 5 * currentPriceAtTime;
+                        const formattedUsd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', notation: 'compact' }).format(usd);
+                        return `${usd >= 0 ? "+" : ""}${formattedUsd} (${formatCOT.format(val)})`;
+                    };
+
                     if (largeBarsSeries.options().visible) {
-                        html += `<div class="tooltip-row" style="margin-top: 6px;"><span style="display:flex; align-items:center;"><span class="tooltip-color-dot" style="background: ${COLORS.large};"></span><span class="tooltip-label">Speculators</span></span> <span class="tooltip-value">${formatCOT.format(cot.noncommNet)}</span></div>`;
+                        html += `<div class="tooltip-row" style="margin-top: 6px;"><span style="display:flex; align-items:center;"><span class="tooltip-color-dot" style="background: ${COLORS.large};"></span><span class="tooltip-label">Speculators</span></span> <span class="tooltip-value" style="color: ${COLORS.large};">${formatTooltipMoney(cot.noncommNet)}</span></div>`;
                         showTooltip = true;
                     }
                     if (commBarsSeries.options().visible) {
-                        html += `<div class="tooltip-row" style="margin-top: 6px;"><span style="display:flex; align-items:center;"><span class="tooltip-color-dot" style="background: ${COLORS.comm};"></span><span class="tooltip-label">Commercials</span></span> <span class="tooltip-value">${formatCOT.format(cot.commNet)}</span></div>`;
+                        html += `<div class="tooltip-row" style="margin-top: 6px;"><span style="display:flex; align-items:center;"><span class="tooltip-color-dot" style="background: ${COLORS.comm};"></span><span class="tooltip-label">Commercials</span></span> <span class="tooltip-value" style="color: ${COLORS.comm};">${formatTooltipMoney(cot.commNet)}</span></div>`;
                         showTooltip = true;
                     }
                 }
