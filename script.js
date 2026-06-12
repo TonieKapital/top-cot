@@ -5,6 +5,33 @@ const COLORS = {
     comm: '#dc4646'   // Commercials
 };
 
+// --- REAL-TIME SERWER ODLICZANIA (PIĄTEK 15:30 EST -> 21:30 CEST) ---
+function startReportCountdown() {
+    function updateClock() {
+        const now = new Date();
+        let targetFriday = new Date(now);
+        
+        targetFriday.setUTCHours(19, 30, 0, 0); // Publikacja rządu USA (15:30 EST)
+        
+        let daysToAdd = (5 - now.getUTCDay() + 7) % 7;
+        if (daysToAdd === 0 && (now.getUTCHours() > 19 || (now.getUTCHours() === 19 && now.getUTCMinutes() >= 30))) {
+            daysToAdd = 7;
+        }
+        targetFriday.setUTCDate(targetFriday.getUTCDate() + daysToAdd);
+        
+        const timeDiff = targetFriday - now;
+        
+        const days = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((timeDiff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const minutes = Math.floor((timeDiff % (1000 * 60 * 60)) / (1000 * 60));
+        
+        document.getElementById('val-countdown').innerText = 
+            `${days}d ${hours.toString().padStart(2, '0')}h ${minutes.toString().padStart(2, '0')}m`;
+    }
+    updateClock();
+    setInterval(updateClock, 60000); // Odświeżanie co minutę
+}
+
 // --- SILNIK BITSTAMP (1D - Cena BTC od 2017 roku) ---
 async function fetchBitstampData() {
     let allCandles = [];
@@ -75,6 +102,8 @@ async function fetchCOTData() {
 // --- GŁÓWNA LOGIKA APLIKACJI ---
 async function init() {
     try {
+        startReportCountdown(); // Odpalenie odliczania w tle
+
         const [seriesBTC, cotMap] = await Promise.all([
             fetchBitstampData(),
             fetchCOTData()
@@ -86,7 +115,7 @@ async function init() {
         let commBarsData = [];
         let largeBarsData = [];
         let zeroData = [];
-        let helperLineData = []; // Ukryta linia pod kropki pomocnicze
+        let helperLineData = []; 
         let cotMarkers = [];
         let fullCotMap = new Map();
 
@@ -117,21 +146,32 @@ async function init() {
                     commBarsData.push({ time: t, value: currentCommNet });
                     largeBarsData.push({ time: t, value: currentLargeNet });
                     
-                    // Kropki kotwiczymy na wartości 0 ukrytej serii liniowej - to wymusi ich render w 100%
                     helperLineData.push({ time: t, value: 0 });
-                    cotMarkers.push({
-                        time: t,
-                        position: 'inBar',
-                        shape: 'circle',
-                        color: 'transparent',
-                        text: '🔵🔴',
-                        size: 1
-                    });
                 }
             } else {
                 bgData.push({ time: t, color: 'transparent', value: 1 });
             }
             zeroData.push({ time: t, value: 0 });
+        }
+
+        // --- SILNIK PROJEKCJI PRZYSZŁOŚCI (PROJEKTUJEMY NADCHODZĄCY WTOREK) ---
+        if (cotDates.length > 0) {
+            const lastReportTuesday = cotDates[cotDates.length - 1];
+            const nextReportTuesday = lastReportTuesday + (7 * 86400); // Dokładnie +7 dni do przodu
+            
+            // Rozszerzamy oś zera i niewidzialną serię o krok w przyszłość
+            zeroData.push({ time: nextReportTuesday, value: 0 });
+            helperLineData.push({ time: nextReportTuesday, value: 0 });
+            
+            // Kotwiczymy wirtualny marker oczekiwania na przyszłym wtorku
+            cotMarkers.push({
+                time: nextReportTuesday,
+                position: 'inBar',
+                shape: 'circle',
+                color: '#e5c158',
+                text: '⏳ RAPORT',
+                size: 2
+            });
         }
 
         const latestBTCPrice = seriesBTC[seriesBTC.length - 1].value;
@@ -166,7 +206,6 @@ async function init() {
                 autoSize: true,
                 layout: { background: { type: 'solid', color: 'transparent' }, textColor: '#8e8e93', fontFamily: 'Inter, sans-serif' },
                 grid: { 
-                    // FABRYCZNY LOOK: Przywrócona bardzo ciemna, dyskretna i minimalistyczna siatka tła
                     vertLines: { color: 'rgba(255, 255, 255, 0.04)' }, 
                     horzLines: { color: 'rgba(255, 255, 255, 0.04)' } 
                 },
@@ -181,7 +220,7 @@ async function init() {
                     borderColor: 'rgba(255, 255, 255, 0.06)',
                     timeVisible: true, 
                     fixLeftEdge: true, 
-                    fixRightEdge: true,
+                    fixRightEdge: false, // Pozwalamy na wysunięcie osi w prawo dla przyszłego markera
                     barSpacing: 28, 
                     minBarSpacing: 5
                 }
@@ -208,7 +247,7 @@ async function init() {
             const lineBTC = chart.addLineSeries({ color: COLORS.btc, lineWidth: 2, priceScaleId: 'right', priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
             lineBTC.setData(seriesBTC);
 
-            // ROZWIĄZANIE ROZMYTYCH KROPEK: Tworzymy dedykowaną, przezroczystą linię pomocniczą specjalnie dla markerów tekstowych
+            // Wstrzyknięcie markerów historycznych oraz przyszłego na serwer linii pomocniczej
             const dotHelperSeries = chart.addLineSeries({
                 priceScaleId: 'left',
                 color: 'transparent',
@@ -218,10 +257,10 @@ async function init() {
                 crosshairMarkerVisible: false
             });
             dotHelperSeries.setData(helperLineData);
-            dotHelperSeries.setMarkers(cotMarkers); // Wstrzyknięcie podwójnych kropek na linię osi zero
+            dotHelperSeries.setMarkers(cotMarkers);
 
             const timeScale = chart.timeScale();
-            const lastTime = seriesBTC[seriesBTC.length - 1].time;
+            const lastTime = zeroData[zeroData.length - 1].time; // Skupiamy się na punkcie z wirtualnym markerem
             const startTime = lastTime - (90 * 86400); 
             timeScale.setVisibleRange({ from: startTime, to: lastTime });
 
