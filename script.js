@@ -1,6 +1,5 @@
-// --- USTAWIENIA KOLORÓW ---
+// --- USTAWIENIA KOLORÓW Raportu ---
 const COLORS = {
-    btc: '#ffffff',
     large: '#5f96ff', // Speculators
     comm: '#dc4646'   // Commercials
 };
@@ -32,7 +31,7 @@ function startReportCountdown() {
     setInterval(updateClock, 60000);
 }
 
-// --- SILNIK BITSTAMP (1D - Cena BTC od 2017 roku) ---
+// --- SILNIK BITSTAMP (Modyfikacja pod pełne świece OHLC) ---
 async function fetchBitstampData() {
     let allCandles = [];
     let currentStartUnix = 1483228800; // 1 Stycznia 2017
@@ -51,9 +50,13 @@ async function fetchBitstampData() {
 
             const candles = json.data.ohlc;
             for (let i = 0; i < candles.length; i++) {
+                // POPRAWKA: Pobieramy komplet danych pod świece giełdowe
                 allCandles.push({
                     time: parseInt(candles[i].timestamp),
-                    value: parseFloat(candles[i].close)
+                    open: parseFloat(candles[i].open),
+                    high: parseFloat(candles[i].high),
+                    low: parseFloat(candles[i].low),
+                    close: parseFloat(candles[i].close)
                 });
             }
             currentStartUnix = parseInt(candles[candles.length - 1].timestamp) + 86400;
@@ -148,7 +151,6 @@ async function init() {
                     
                     helperLineData.push({ time: t, value: 0 });
                     
-                    // Kropki informacyjne na historycznych wtorkach (zostają dla orientacji)
                     cotMarkers.push({
                         time: t,
                         position: 'inBar',
@@ -165,7 +167,7 @@ async function init() {
             helperLineData.push({ time: t, value: 0 });
         }
 
-        const latestBTCPrice = seriesBTC[seriesBTC.length - 1].value;
+        const latestBTCPrice = seriesBTC[seriesBTC.length - 1].close; // Zmiana na .close
         const formatUSD = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
         const formatCOT = new Intl.NumberFormat('en-US');
 
@@ -211,7 +213,7 @@ async function init() {
                     borderColor: 'rgba(255, 255, 255, 0.06)',
                     timeVisible: true, 
                     fixLeftEdge: true, 
-                    fixRightEdge: true, // Zablokowanie osi na dzisiejszym dniu (czysty fabryczny look)
+                    fixRightEdge: true,
                     barSpacing: 28, 
                     minBarSpacing: 5
                 }
@@ -235,8 +237,19 @@ async function init() {
             const largeBarsSeries = chart.addHistogramSeries({ color: COLORS.large, priceScaleId: 'left', priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
             largeBarsSeries.setData(largeBarsData);
 
-            const lineBTC = chart.addLineSeries({ color: COLORS.btc, lineWidth: 2, priceScaleId: 'right', priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
-            lineBTC.setData(seriesBTC);
+            // MODYFIKACJA: Zamieniamy addLineSeries na profesjonalne addCandlestickSeries
+            const candlestickBTC = chart.addCandlestickSeries({
+                upColor: '#26a69a',      // Klasyczna zieleń TradingView
+                downColor: '#ef5350',    // Klasyczna czerwień TradingView
+                borderVisible: false,
+                wickUpColor: '#26a69a',
+                wickDownColor: '#ef5350',
+                priceScaleId: 'right',
+                priceLineVisible: false,
+                lastValueVisible: false,
+                crosshairMarkerVisible: false
+            });
+            candlestickBTC.setData(seriesBTC);
 
             const dotHelperSeries = chart.addLineSeries({
                 priceScaleId: 'left',
@@ -256,7 +269,7 @@ async function init() {
 
             // --- INTERAKTYWNY TOOLTIP ---
             const toolTip = document.getElementById('tv-tooltip');
-            const mapBTC = new Map(seriesBTC.map(p => [p.time, p.value]));
+            const mapBTC = new Map(seriesBTC.map(p => [p.time, p.close])); // Mapujemy po .close
 
             chart.subscribeCrosshairMove(param => {
                 if (param.point === undefined || !param.time || param.point.x < 0 || param.point.x > chartContainer.clientWidth || param.point.y < 0 || param.point.y > chartContainer.clientHeight) {
@@ -271,8 +284,8 @@ async function init() {
 
                 const currentPriceAtTime = mapBTC.get(timeSec) || latestBTCPrice;
 
-                if (lineBTC.options().visible && mapBTC.has(timeSec)) {
-                    html += `<div class="tooltip-row"><span style="display:flex; align-items:center;"><span class="tooltip-color-dot" style="background: ${COLORS.btc};"></span><span class="tooltip-label">Cena BTC</span></span> <span class="tooltip-value">${formatUSD.format(mapBTC.get(timeSec))}</span></div>`;
+                if (candlestickBTC.options().visible && mapBTC.has(timeSec)) {
+                    html += `<div class="tooltip-row"><span style="display:flex; align-items:center;"><span class="tooltip-color-dot" style="background: #ffffff;"></span><span class="tooltip-label">Cena BTC</span></span> <span class="tooltip-value">${formatUSD.format(mapBTC.get(timeSec))}</span></div>`;
                     showTooltip = true;
                 }
                 
@@ -305,7 +318,7 @@ async function init() {
                 toolTip.style.left = xPos + 'px'; toolTip.style.top = param.point.y + 'px';
             });
 
-            const controls = { 'btc': [lineBTC] };
+            const controls = { 'btc': [candlestickBTC] }; // Aktualizacja powiązania przycisku
 
             document.querySelectorAll('.toggle-btn').forEach(btn => {
                 btn.addEventListener('click', function() {
